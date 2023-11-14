@@ -1,2 +1,2 @@
 # icheckmk
-Ansible playbooks and roles for a distributed monitoring checkmk plateform management
+Ansible playbooks and roles for a checkmk distributed monitoring  plateform management
