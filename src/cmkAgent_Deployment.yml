@@ -1,1 +1,28 @@
+---
+- hosts: all
+  serial: 20
+  gather_facts: True
 
+  pre_tasks:
+    - name: Initializing global Variables from Ansible Buildin facts
+      ansible.builtin.set_fact:
+        dbname:    "{{playbook_dir}}/.cmkprivate"
+        cacheable:     yes
+
+    - name: Loading user defined Parameters
+      ansible.builtin.include_vars:
+        dir: "{{dbname}}"
+        ignore_unknown_extensions: True
+        depth: 1
+        extensions:
+          - 'yml'
+          - 'yaml'
+
+    - name: Generating Assets database API Parameters from user presets
+      ansible.builtin.set_fact:
+        dburl: "{{ assetDatabase.protocol|default('https') + '://' + assetDatabase.apiserver }}/assets/server"
+        dbtoken: "{{ assetDatabase.apikey|default('') }}"
+
+  roles:
+    - role: cmkAgentRegistration
+    # - role: cmkAgentExtensions
