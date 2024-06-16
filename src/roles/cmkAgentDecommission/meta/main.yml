@@ -1,1 +1,13 @@
+---
+galaxy_info:
+  role_name: cmkAgentDecommission
+  author: Alfred TCHONDJO
+  description: Remove Host from checkMK monitoring system
+  company: Iriven Group
 
+  license: GPLv2
+
+  min_ansible_version: 2.9
+
+dependencies:
+  - cmkServerConnections
