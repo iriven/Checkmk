@@ -1,1 +1,26 @@
+- name: QUERIYING ASSETS DATABASE
+  block:
+    - name: Loading  known assets for current host
+      local_action:
+        module: uri
+        url: "{{ dburl }}/{{ inventory_hostname_short|lower }}"
+        method: GET
+        headers:
+          Content-Type: application/json
+          x-apikey: "{{ dbtoken }}"
+      register: DBQuery
+      until: DBQuery.status == 200
+      retries: 6
+      delay: 10
+      module_defaults:
+        validate_certs: false
 
+    - name: Defining some global parameters
+      ansible.builtin.set_fact:
+        scopes:         [ 'dmzi', 'dmzr', 'mzr', 'icp', 'core', 'cis', 'ets', 'none' ]
+        criticalities:  [ 'dev', 'prd', 'stg' ]
+      when: DBQuery is defined and DBQuery.status < 400 and DBQuery.json|length >0
+
+  when:
+    - dburl is defined and dburl|length >0
+    - dbtoken is defined and dbtoken|length >0
