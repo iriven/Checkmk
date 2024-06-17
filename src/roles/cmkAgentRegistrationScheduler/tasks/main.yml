@@ -12,39 +12,56 @@
         create: yes
       delegate_to: localhost
 
-    - name: Get Agent predicitive registration date
+    - name: Getting Current system date
       ansible.builtin.shell: |
         set timeout 10
-        date -d '25hour30min' +'%m-%d-%H-%M'
+        date -d '2min' +'%Y-%m-%d %H:%M:%S'
+      register: currentSystemDate
+      failed_when: currentSystemDate.rc > 0
+      delegate_to: localhost
+
+    - name: Gathering Agent predicitive registration date
+      ansible.builtin.shell: |
+        set timeout 10
+        date -d '1min' +'%Y-%m-%d %H:%M:%S'
       register: AgentRegistrationDate
       failed_when: AgentRegistrationDate.rc > 0
       delegate_to: localhost
 
     - name: Parse previous result to retrieve scheduler Parameters
       ansible.builtin.set_fact:
-        regMonth:   "{{ AgentRegistrationDate.stdout.split('-') | first }}"
-        regDay:     "{{ AgentRegistrationDate.stdout.split('-')[1] }}"
-        regHour:    "{{ AgentRegistrationDate.stdout.split('-')[2] }}"
-        regMin:     "{{ AgentRegistrationDate.stdout.split('-') | last }}"
-      when: AgentRegistrationDate is defined and AgentRegistrationDate.rc == 0
+        regYear:    "{{ (AgentRegistrationDate.stdout.split(' ')| first).split('-') | first }}"
+        regMonth:   "{{ (AgentRegistrationDate.stdout.split(' ')| first).split('-')[1]      }}"
+        regDay:     "{{ (AgentRegistrationDate.stdout.split(' ')| first).split('-') | last  }}"
+        regHour:    "{{ (AgentRegistrationDate.stdout.split(' ')| last ).split(':') | first }}"
+        regMin:     "{{ (AgentRegistrationDate.stdout.split(' ')| last ).split(':')[1]      }}"
+        regSec:     "{{ (AgentRegistrationDate.stdout.split(' ')| last ).split(':') | last  }}"
+        currYear:    "{{ (currentSystemDate.stdout.split(' ')| first).split('-') | first }}"
+        currMonth:   "{{ (currentSystemDate.stdout.split(' ')| first).split('-')[1]      }}"
+        currDay:     "{{ (currentSystemDate.stdout.split(' ')| first).split('-') | last  }}"
+        currHour:    "{{ (currentSystemDate.stdout.split(' ')| last ).split(':') | first }}"
+        currMin:     "{{ (currentSystemDate.stdout.split(' ')| last ).split(':')[1]      }}"
+        currSec:     "{{ (currentSystemDate.stdout.split(' ')| last ).split(':') | last  }}"
+      delegate_to: localhost
+      when:
+        - AgentRegistrationDate is defined and AgentRegistrationDate.rc == 0
+        - currentSystemDate is defined and currentSystemDate.rc == 0
 
     - name: Scheduling CheckMK Agent registration
       ansible.builtin.cron:
         name: CheckMK Agent AutoDeploy
-        month:    "{{ regMonth|int }}"
-        day:      "{{ regDay|int }}"
-        hour:     "{{ regHour|int }}"
-        minute:   "{{ regMin|int }}"
+        month:    "{{ regMonth|default(currMonth)|int }}"
+        day:      "{{ regDay|default(currDay)|int }}"
+        hour:     "{{ regHour|default(currHour)|int }}"
+        minute:   "{{ regMin|default(currMin)|int }}"
         user:     root
-        job: "ansible-playbook -i {{inventory_hostname_short|lower}}, {{playbook_dir}}/cmkAgent_Deployment.yml --vault-password-file {{ vaultPasswdFile }} >> /var/log/cmkAgentAutoRegistration.log"
-        cron_file: ansible_checkMK-agent-autoInstall-{{ inventory_hostname_short|lower }}
+        job: "sudo ansible-playbook -i {{inventory_hostname_short|lower}}, {{playbook_dir}}/cmkAgent_Deployment.yml --vault-password-file {{ vaultPasswdFile }} >> /var/log/cmkAgentAutoRegistration.log"
+        cron_file: "{{ 'ansible' + cmkAgent.hostname|capitalize + '.auto.register.cron' }}"
       become: true
       delegate_to: localhost
       when:
-        - regMonth is defined and regMonth|int > 0
-        - regDay   is defined and regDay|int > 0
-        - regHour  is defined and regHour|int >= 0
-        - regMin   is defined and regMin|int  >= 0
+        - AgentRegistrationDate is defined and AgentRegistrationDate.rc == 0
+        - currentSystemDate is defined and currentSystemDate.rc == 0
       vars:
         - log_path: /var/log/cmkAgentAutoRegistration.log
 
@@ -53,3 +70,7 @@
     - dbtoken is defined and dbtoken|length >0
     - vaultPasswdFile is defined and vaultPasswdFile|length >0
     - vaultPasswd is defined and vaultPasswd|length >0
+
+# date -d '25hour30min' +'%m-%d-%H:%M'
+
+# 25hour30min
