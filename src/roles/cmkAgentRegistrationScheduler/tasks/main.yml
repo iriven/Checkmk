@@ -23,7 +23,7 @@
     - name: Gathering Agent predicitive registration date
       ansible.builtin.shell: |
         set timeout 10
-        date -d '1min' +'%Y-%m-%d %H:%M:%S'
+        date -d '25hour30min' +'%Y-%m-%d %H:%M:%S'
       register: AgentRegistrationDate
       failed_when: AgentRegistrationDate.rc > 0
       delegate_to: localhost
