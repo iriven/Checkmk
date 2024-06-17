@@ -1,10 +1,11 @@
+---
 - name: CHECKMK CONNECTIONS DETAILS
   block:
-    - name: Initializing connections collection container
+    - name: Initializing runtime connections database
       ansible.builtin.set_fact:
         cmkconnections: "{{ cmkconnections| combine({ 'pattern': '^'+ cmkAgent.region + '_' + cmkAgent.envalias|lower  + '*' }) }}"
 
-    - name: Retrieving known connections list
+    - name: Retrieving connections list from checkmk master server
       local_action:
         module: uri
         url: "{{ cmkAgent.config.apiurl }}/domain-types/site_connection/collections/all"
@@ -16,7 +17,7 @@
       register: cnxResponse
       failed_when: cnxResponse.status >= 400
 
-    - name: Generating host target connection pool
+    - name: Building connection pool based on presets criteria
       ansible.builtin.set_fact:
         cmkconnections: "{{ cmkconnections|combine({ 'pool': (cmkconnections.pool|default([]) + [ item.id ])|unique if item.id is regex(cmkconnections.pattern) and not(item.extensions.status_connection.disable_in_status_gui|bool) else cmkconnections.pool|default([]) }) }}"
       with_items: "{{cnxResponse.json.value}}"
@@ -26,7 +27,7 @@
         - cnxResponse is defined and cnxResponse.status < 400
         - cmkconnections is defined and cmkconnections.pattern|length > 0
 
-    - name: Gathering details on each link in the connection pool
+    - name: Gathering details on each connection in the pool
       local_action:
         module: uri
         url: "{{ cmkAgent.config.apiurl }}/objects/site_connection/{{ item|lower }}"
@@ -43,29 +44,17 @@
       when:
         - cmkconnections is defined and cmkconnections.pool|length > 0
 
-    - name: Retrieving monitoring host name for each link in the active connection pool
+    - name: Retrieving monitoring proxy hostname for each connection in the pool
       ansible.builtin.set_fact:
         cmkconnections: "{{ cmkconnections|combine({ 'proxies': (cmkconnections.proxies|default([]) + [{ 'site': item.item, 'host': item.json['extensions']['status_connection']['connection']['host'] }])|unique }) }}"
       with_items: "{{cnxDetailsResponse.results}}"
       loop_control:
-        label: "Retrieving instance hostname for: {{ item.item }}"
+        label: "Retrieving proxy hostname for: {{ item.item }} site"
       when:
         - cnxDetailsResponse.results is defined and cnxDetailsResponse.results|length > 0
 
-    - name: Gathering Agent Receiver port for each link in the active connection pool
-      ansible.builtin.shell: |
-        set timeout 60
-        omd config "{{ item.site|lower }}" show|grep -i 'RECEIVER_PORT'|awk -F':' '{print $NF}'| sed 's/[ ][ ]*//g'
-      register: cnxReceiverport
-      failed_when: cnxReceiverport.rc > 0
-      delegate_to: "{{item.host}}"
-      with_items: "{{cmkconnections.proxies}}"
-      loop_control:
-        label: "Retrieving Agent Receiver port for: {{ item.site|lower }}"
-      when:
-        - cmkconnections is defined and cmkconnections.proxies|length > 0
 
-    - name: Retrieving agents count for each link in the active connection pool
+    - name: Gathering agents list for each connection in the pool
       ansible.builtin.shell: |
         set timeout 30
         su -c 'cmk -l' -l {{ item.site }}
@@ -77,12 +66,12 @@
       when:
         - cmkconnections is defined and cmkconnections.proxies|length > 0
 
-    - name: Populating previous result into the connections collection container
+
+    - name: Adding previous result into the runtime connections database
       ansible.builtin.set_fact:
         cmkconnections:  >-
          {{ cmkconnections|combine({ 'activelink': item.0|combine({ 'agents': item.1.stdout_lines,
-              'agents_count': item.1.stdout_lines|length,
-              'recvport': item.2.stdout
+              'agents_count': item.1.stdout_lines|length
               })
             })
           if cmkconnections.activelink is not defined or
@@ -94,27 +83,45 @@
           else
           cmkconnections|combine({'activelink': cmkconnections.activelink })
          }}
-
       loop_control:
-        label: "Populating receiver port for: {{ item.0.site }}"
+        label: "Saving Agents list for: {{ item.0.site }} site into runtime database"
       with_together:
         - "{{ cmkconnections.proxies }}"
         - "{{ cnxAgents.results }}"
-        - "{{ cnxReceiverport.results }}"
       vars:
         cmkEnableTlsEncrytion:  false
       when:
         - cnxAgents is defined and cnxAgents.results|length > 0
         - cmkconnections is defined and cmkconnections.proxies|length > 0
-        - cnxReceiverport is defined and cnxReceiverport.results|length > 0
+
+
+    - name: Retrieving agents Receiver port on selected checkmk proxy server
+      ansible.builtin.shell: |
+        set timeout 60
+        omd config "{{ cmkconnections.activelink.site|lower }}" show|grep -i 'RECEIVER_PORT'|awk -F':' '{print $NF}'| sed 's/[ ][ ]*//g'
+      register: cnxReceiverport
+      failed_when: cnxReceiverport.rc > 0
+      delegate_to: "{{cmkconnections.activelink.host}}"
+      when:
+        - cmkconnections is defined and cmkconnections.activelink|length > 0
+
+
+    - name: Adding previous result into the active connection attritbutes
+      ansible.builtin.set_fact:
+        cmkconnections:  >-
+         {{
+         cmkconnections|combine({ 'activelink': cmkconnections.activelink|combine({'recvport': cnxReceiverport.stdout}) })
+         }}
+      when:
+        - cmkconnections is defined and cmkconnections.activelink|length > 0
+        - cnxReceiverport is defined and cnxReceiverport.stdout|length > 0
 
 
     # - name: Print return information from the previous task
     #   ansible.builtin.debug:
     #     var: "{{item}}"
     #   loop:
-    #     - cmkAgent
-    #     - cmkconnections
+    #     - cmkconnections.activelink
 
   when:
     - dburl is defined and dburl|length >0
