@@ -82,3 +82,80 @@
       register: configservices
       with_fileglob:
         - services/*.cfg
+
+
+
+---
+# - name: DEPLOY MANDATORIES DEPENDENCIES ON AGENT
+#   block:
+#     - name: Installing Debsums runtime dependency on Agent (Debian, derivatives).
+#       become: true
+#       ansible.builtin.apt:
+#         name: debsums
+#         state: present
+#         update_cache: yes
+#         autoremove: yes
+#         purge: true
+#   when: ansible_os_family == 'Debian'
+
+# - name: DEPLOYING LOCAL MODULES ON AGENT
+#   block:
+#     - name: Deploy checkmk Custom scripts on current Agent
+#       ansible.builtin.copy:
+#         src: "{{ item }}"
+#         dest: /usr/lib/check_mk_agent/local
+#         owner: root
+#         group: root
+#         mode: 0755
+#       register: fileDeployment
+#       with_fileglob:
+#         - modules/common/*
+#         - modules/{{ansible_os_family|lower}}/*
+
+#     - name: Normalizing EOL for new uploaded files
+#       ansible.builtin.shell: dos2unix $(find /usr/lib/check_mk_agent/local -type f)
+#       when: fileDeployment.changed|bool
+
+
+# - name: REGISTER CHANGES ON CHEKMK SERVER
+#   block:
+#     - name: Execute a service discovery from Checkmk server
+#       local_action:
+#         module: uri
+#         url: "{{ cmkAgent.config.apiurl }}/domain-types/service_discovery_run/actions/start/invoke"
+#         method: POST
+#         headers:
+#           Content-Type: application/json
+#           Accept: application/json
+#           Authorization: "Bearer {{ cmkAgent.config.apiuser }} {{ cmkAgent.config.apikey }}"
+#         body_format: json
+#         body:
+#           host_name: "{{ cmkAgent.hostname }}"
+#           mode: "fix_all"
+#       register: AcceptedResponse
+#       failed_when: AcceptedResponse.status >= 400
+#       when:
+#         - fileDeployment.changed|bool
+
+#     - name: Activating all pending changes
+#       local_action:
+#         module: uri
+#         url:  "{{ cmkAgent.config.apiurl }}/domain-types/activation_run/actions/activate-changes/invoke"
+#         method: POST
+#         headers:
+#           Content-Type: application/json
+#           Accept: application/json
+#           If-Match: "*"
+#           Authorization: "Bearer {{ cmkAgent.config.apiuser }} {{ cmkAgent.config.apikey }}"
+#         body_format: json
+#         body:
+#           redirect: "false"
+#           sites:
+#             - "{{ cmkAgent.config.remotesite|lower }}"
+#           force_foreign_changes: "false"
+#       register: activateModuleResponse
+#       run_once: 'true'
+#       failed_when: activateModuleResponse.status >= 400 and activateModuleResponse.status != 422
+#       when:
+#         - fileDeployment.changed|bool
+#         - AcceptedResponse.status  < 400
