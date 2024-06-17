@@ -1,6 +1,7 @@
-- name: QUERIYING ASSETS DATABASE
+---
+- name: QUERIYING BNP CIB DATABASE
   block:
-    - name: Loading  known assets for current host
+    - name: Loading host assets from data source repository
       local_action:
         module: uri
         url: "{{ dburl }}/{{ inventory_hostname_short|lower }}"
