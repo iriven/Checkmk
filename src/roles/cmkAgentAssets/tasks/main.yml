@@ -1,4 +1,4 @@
----
+
 - name: DEFINING HOST ATTRIBUTES
   block:
     - name: Gathering host attributes from it known assets
@@ -80,3 +80,4 @@
     - dburl is defined and dburl|length >0
     - dbtoken is defined and dbtoken|length >0
     - DBQuery is defined and DBQuery.status < 400 and DBQuery.json|length >0
+
