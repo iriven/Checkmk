@@ -71,3 +71,257 @@
     - cmkAgent is defined and cmkAgent.config|length > 0
   vars:
     cmkconnections: {}
+
+
+
+
+    ---
+# - name: UPDATE ALL PACKAGES AND INSTALL DEPENDENCIES (REDHAT, DERIVATIVES)
+#   block:
+#     - name: Update all installed packages using YUM module (RedHat 7, derivatives, and earlier).
+#       become: true
+#       ansible.builtin.yum:
+#         name: '*'
+#         state: latest
+#         update_cache: yes
+#         update_only: yes
+#       when:
+#         - ansible_distribution_major_version|int <= 7
+#       vars:
+#         ansible_python_interpreter: '/usr/bin/python2'
+
+#     - name: Remove packages not needed anymore
+#       become: true
+#       ansible.builtin.yum:
+#         autoremove: yes
+#       when:
+#         - ansible_distribution_major_version|int <= 7
+
+#     - name: Update all installed packages using DNF module (RedHat 8, derivatives, and later).
+#       become: true
+#       ansible.builtin.dnf:
+#         name: '*'
+#         state: latest
+#         update_cache: yes
+#         update_only: yes
+#       when:
+#         - ansible_distribution_major_version|int > 7
+
+#     - name: Remove packages not needed anymore
+#       become: true
+#       ansible.builtin.dnf:
+#         autoremove: yes
+#       when:
+#         - ansible_distribution_major_version|int > 7
+
+#     - name: Installing Checkmk dependencies using YUM module (RedHat 7, derivatives, and earlier).
+#       become: true
+#       ansible.builtin.yum:
+#         name: "{{ item }}"
+#         state: latest
+#         update_cache: yes
+#       with_item:
+#         - python3
+#         - python3-requests
+#         - graphviz-gd
+#       when:
+#         - ansible_distribution_major_version|int <= 7
+#       vars:
+#         ansible_python_interpreter: '/usr/bin/python2'
+
+#     - name: Installing Checkmk dependencies using DNF module (RedHat 8, derivatives, and later).
+#       become: true
+#       ansible.builtin.dnf:
+#         name: "{{ item }}"
+#         state: latest
+#         update_cache: yes
+#       with_item:
+#         - python3
+#         - python3-requests
+#         - graphviz-gd
+#       when:
+#         - ansible_distribution_major_version|int > 7
+
+#   # - name: Reboot when packages were updated
+#   #   reboot:
+#   #   when: yum_update_status.changed
+
+#   when: ansible_os_family == 'RedHat'
+
+
+# - name: UPDATE ALL PACKAGES AND INSTALL DEPENDENCIES (DEBIAN, DERIVATIVES)
+#   block:
+#     - name: Update all installed packages using APT module (Debian, derivatives).
+#       become: true
+#       ansible.builtin.apt:
+#         name: '*'
+#         state: latest
+#         update_cache: yes
+#         update_only: yes
+#       register: apt_update_status
+
+#     - name: Remove packages not needed anymore
+#       become: true
+#       ansible.builtin.apt:
+#         autoremove: yes
+
+#     - name: Reboot when packages were updated
+#       reboot:
+#         post_reboot_delay: 60
+#       when: apt_update_status.changed
+
+#     - name: Installing Checkmk dependencies using APT module (Debian, derivatives).
+#       become: true
+#       ansible.builtin.apt:
+#         name: "{{ item }}"
+#         state: latest
+#         update_cache: yes
+#       with_item:
+#         - python3
+#         - python3-requests
+#         - graphviz-gd
+
+#   # - name: Reboot when packages were updated
+#   #   reboot:
+#   #     post_reboot_delay: 60
+#   #   when: apt_update_status.changed
+
+#   when: ansible_os_family == 'Debian'
+
+
+# - name: PREPARING CHECKMK FILESYSTEM
+#   block:
+#     - name: Install lvm2 dependency
+#       package:
+#         name: lvm2
+#         state: present
+
+#     - name: Unmounting lv_data filesystem .
+#       ansible.builtin.shell: |
+#         set timeout 60
+#         lsof /data/|grep -i 'geneos'|head -1|awk '{print $2}' | xargs -I {} sh -c "kill -9 {};" && umount /data/
+#       register: umountdata
+
+#     - name: Extend the logical volume to take all remaining space of the PVs and resize the underlying filesystem
+#       community.general.lvol:
+#         vg: datavg
+#         lv: lv_data
+#         size: 5G
+#         shrink: yes
+#         force: yes
+
+#     - name: Check for datavg VG Size of 143G
+#       fail:
+#         msg: Could not create LV with 143G size
+#       when:
+#         - ansible_lvm['vgs']['datavg']['size_g'] < "142"
+
+#     - name: task for creating logical volume
+#       community.general.lvol:
+#         vg: datavg
+#         lv:  lv_optomd
+#         size: 100%FREE
+#         force: yes
+
+#     - name: Create directory /opt/omd if does not exist
+#       file:
+#         path: /opt/omd
+#         state: directory
+#         mode: 0755
+
+#     - name: format the ext4 filesystem
+#       community.general.filesystem:
+#         fstype: ext4
+#         dev: /dev/mapper/datavg-lv_optomd
+
+#     - name: Updating Fstab .
+#       ansible.builtin.shell: |
+#         set timeout 60
+#         grep 'datavg-lv_optomd' /etc/fstab >/dev/null  2>&1   ||  echo '/dev/mapper/datavg-lv_optomd /opt/omd ext4 defaults 1 2' >> /etc/fstab
+#         systemctl daemon-reload
+#         setsebool -P httpd_can_network_connect 1
+
+#     - name: mount the lv on /data
+#       ansible.posix.mount:
+#         path: /data
+#         src: /dev/mapper/datavg-lv_data
+#         fstype: ext4
+#         opts: defaults,1,2
+#         state: mounted
+
+#     - name: mount the lv on /opt/omd
+#       ansible.posix.mount:
+#         path: /opt/omd
+#         src: /dev/mapper/datavg-lv_optomd
+#         fstype: ext4
+#         opts: defaults,1,2
+#         state: mounted
+
+# - name: DEPLOYING CHECKMK ON REDHAT FAMILY SERVER
+#   block:
+#     - name: Make sure RPMS Destination folder Exists
+#       file:
+#         path: /tmp/RPMS
+#         state: directory
+#         mode: 0775
+
+#     - name: Uploading RPMS Files to the server
+#       ansible.builtin.copy:
+#         src: "{{ item }}"
+#         dest: "/tmp/RPMS/"
+#         owner: "root"
+#         group: "root"
+#         mode: 0644
+#       register: pkgFiles
+#       with_fileglob:
+#         - '*.rpm'
+
+#     - name: Validate RPMs files availability
+#       fail:
+#         msg: "RPMs not found in ../files/"
+#       when: pkgFiles.results|length == 0 and pkgFiles.skipped and pkgFiles.skipped_reason.find('No items') != -1
+
+#     - set_fact:
+#         pkgList: "{{ pkgFiles.results | map(attribute='dest') | list}}"
+
+#     - name: Installing Checkmk on (RedHat, derivatives) Server
+#       become: true
+#       ansible.builtin.yum:
+#         name: "{{pkgList}}"
+#         state: latest
+#         update_cache: yes
+
+#   when: ansible_os_family == 'RedHat'
+
+
+# - name: DEPLOYING SITES ON CHECKMK INSTANCE SERVER
+#   block:
+#     - name: Generating site list for current checkmk instance server
+#       ansible.builtin.set_fact:
+#         sitesList: "{{ (sitesList|default([]) + [ region + '_' + item + '_' + suffix ])|uniq }}"
+#       loop_control:
+#         label: "Generate site with mame: {{ region + '_' + item + '_' + suffix }}"
+#       with_items:
+#         - "{{ selectedEnv }}"
+#       vars:
+#         suffix: '06'
+#         region: 'emea'
+#         envList: [ 'dev', 'prod', 'stg' ]
+#         selectedEnv: ['dev', 'stg']
+
+#     - name: Deploying sites on checkmk instance server .
+#       ansible.builtin.shell: |
+#         set timeout 60
+#         omd create "{{item}}";
+#         su - "{{item}}" -c "echo {{admpasswd}}} | cmk-passwd --stdin cmkadmin";
+#         omd config "{{item}}" set LIVESTATUS_TCP on;
+#         omd config "{{item}}" show;
+#       loop_control:
+#         label: "Deploying site: {{ item }}"
+#       with_items:
+#         - "{{ selectedEnv }}"
+
+#     - name: Starting OMD service on CHECKMK server.
+#       ansible.builtin.shell: |
+#         set timeout 60
+#         omd start
