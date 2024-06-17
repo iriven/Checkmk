@@ -124,12 +124,11 @@
       when: DiscoveryResponse.status < 400
       run_once: 'true'
 
-    - name: Disable Scheduled Registration whenever it exists.
+    - name: Cleaning Scheduler Registration Table.
       ansible.builtin.cron:
-        name: "CheckMK Agent AutoInstall"
-        cron_file: ansible_checkMK-agent-autoInstall-{{ cmkAgent.hostname|lower }}
+        name: Disable Scheduled Registration of CurrentAgent
+        cron_file: "{{ 'ansible' + cmkAgent.hostname|capitalize + '.auto.register.cron' }}"
         state: absent
-      become: true
       delegate_to: localhost
 
     - name: Enable TLS communication between Agent and checkmk Instance
